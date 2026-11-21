@@ -102,10 +102,6 @@ button:disabled{opacity:.45}
 
 <div class="ov" id="menu" hidden><div class="sheet">
   <h2>새 대국</h2>
-  <div class="seg" role="tablist">
-    <button id="mOn" role="tab">각자 폰으로</button>
-    <button id="mLo" role="tab">한 폰으로</button>
-  </div>
   <div id="pOn">
     <label class="f">내 이름<input type="text" id="myName" maxlength="8" placeholder="예: 남편"></label>
     <div id="netIdle" style="display:flex;flex-direction:column;gap:10px">
@@ -120,16 +116,9 @@ button:disabled{opacity:.45}
       <p class="url" id="inviteUrl"></p>
     </div>
   </div>
-  <div id="pLo">
-    <div class="row2">
-      <label class="f">빨강<input type="text" id="n0" maxlength="8"></label>
-      <label class="f">파랑<input type="text" id="n1" maxlength="8"></label>
-    </div>
-  </div>
   <label class="f">선 플레이어<select id="first"><option value="0">빨강 먼저</option><option value="1">파랑 먼저</option></select></label>
   <label class="ck"><input type="checkbox" id="oStay"><span>제자리 머물기 허용<small>말을 움직이지 않고 벽만 세울 수 있어요 (원작 1편 방식)</small></span></label>
   <label class="ck"><input type="checkbox" id="oBrk"><span>벽 부수기 (각자 1회)<small>이동하면서 앞을 막은 벽 하나를 부수고 지나가요 (2편 1라운드 규칙)</small></span></label>
-  <label class="ck"><input type="checkbox" id="oTmr"><span>턴 제한 90초<small>시간이 지나면 무작위로 이동·벽 설치</small></span></label>
   <details><summary>규칙 보기</summary><ul>
     <li>7×7 판. 각자 원형 말 2개(시작 자리 고정)와 사각 말 2개를 씁니다.</li>
     <li>시작할 때 사각 말을 선 → 후 → 후 → 선 순서로 빈 칸에 하나씩 놓습니다.</li>
@@ -137,8 +126,9 @@ button:disabled{opacity:.45}
     <li>사각 말: 한 방향으로 곧게 1~2칸.</li>
     <li>원형 말: 1칸 간 뒤, 원하면 왼쪽이나 오른쪽으로 꺾어 1칸 더(대각선 자리까지).</li>
     <li>벽과 다른 말은 넘어갈 수 없습니다.</li>
+    <li>한 턴은 90초. 시간이 지나면 말과 벽이 무작위로 정해집니다.</li>
     <li>모든 영역이 벽으로 갈라져 영역마다 한 사람의 말만 남으면 바로 끝납니다.</li>
-    <li>내 말이 있는 영역들의 칸 수 합이 큰 사람이 이깁니다. 같으면 가장 넓은 영역 하나를 비교합니다.</li>
+    <li>내 말이 있는 영역들의 칸 수 합이 큰 사람이 이깁니다. 합이 같으면 가장 넓은 영역을 가진 사람이 이깁니다.</li>
   </ul></details>
   <button class="pri" id="bStart">대국 시작</button>
   <button id="bResume">이어서 두기</button>
@@ -157,7 +147,7 @@ button:disabled{opacity:.45}
 const N=7,S=100,DR=[-1,0,1,0],DC=[0,1,0,-1],COL=['#ff5b4f','#4f9dff'],TINT=['rgba(255,91,79,.26)','rgba(79,157,255,.26)'],CN=['빨강','파랑'];
 const $=id=>document.getElementById(id);
 let cfg={names:['나','와이프'],stay:false,brk:false,timer:false,first:0};
-let mode='online',G=null,hist=[],ui={sel:null,armed:false},tmr=null,tLeft=90,curD=new Map();
+const mode='online';let G=null,hist=[],ui={sel:null,armed:false},tmr=null,tLeft=90,curD=new Map();
 /* online (P2P) */
 const HAS_PEER=typeof Peer!=='undefined';
 let role=null,room=null,peer=null,conn=null,SS=null,my=-1,myName='',peerName='',netStat='',rejoinT=null,hostTries=0,shownRes=-1;
@@ -165,17 +155,16 @@ let role=null,room=null,peer=null,conn=null,SS=null,my=-1,myName='',peerName='',
 const makeG=f=>({pieces:[{o:0,t:'c',r:1,c:1},{o:0,t:'c',r:5,c:5},{o:1,t:'c',r:1,c:5},{o:1,t:'c',r:5,c:1}],
   walls:{},phase:'place',queue:[f,1-f,1-f,f],first:f,turn:f,step:'select',moved:-1,used:[false,false],last:null,result:null});
 const ON=()=>mode==='online';
-const CF=()=>ON()?(SS&&SS.cfg)||cfg:cfg;
+const CF=()=>({...cfg,...((SS&&SS.cfg)||{}),timer:true});
 const nameOf=p=>ON()?(p===my?(myName||CN[p]):(peerName||CN[p])):(cfg.names[p]||CN[p]);
 const linked=()=>!!(conn&&conn.open);
 
 function ls(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||'null');localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
-function loadLocal(){const d=ls('wallgo2');if(d){Object.assign(cfg,d.cfg||{});if(d.G)G=d.G}const m=ls('wallgo2mode');if(m)mode=m}
-function saveLocal(){ls('wallgo2',{cfg,G});ls('wallgo2mode',mode)}
+
 function saveNet(){ls('wallgo2net',{role,room,SS,myName})}
 function send(m){try{if(linked())conn.send(m)}catch(e){}}
 
-function commit(){if(!ON()){saveLocal();return}
+function commit(){
   SS={cfg:SS.cfg,G,hist:hist.slice(-12),rev:(SS.rev||0)+1};saveNet();send({t:'state',S:SS})}
 
 const ek=(r,c,d)=>d===0?(r>0?'h:'+(r-1)+':'+c:null):d===2?(r<N-1?'h:'+r+':'+c:null):d===3?(c>0?'v:'+r+':'+(c-1):null):(c<N-1?'v:'+r+':'+c:null);
@@ -254,9 +243,15 @@ function showResult(){const R=G.result;if(ON())shownRes=SS?SS.rev:-1;
   $('rBody').innerHTML=`<b style="color:${COL[0]}">${esc(nameOf(0))} ${R.sc[0]}칸</b> &nbsp;:&nbsp; <b style="color:${COL[1]}">${esc(nameOf(1))} ${R.sc[1]}칸</b>`+(yw?`<br>${yw}`:'')+(R.why?`<br><small>${R.why}</small>`:'');
   $('bAgain').hidden=ON()&&my<0;$('res').hidden=false;stopTimer()}
 
-function stopTimer(){clearInterval(tmr);tmr=null;$('tbar').style.display='none'}
-function startTimer(){stopTimer();if(!CF().timer||!canAct())return;tLeft=90;$('tbar').style.display='block';$('tfill').style.width='100%';
-  tmr=setInterval(()=>{tLeft--;$('tfill').style.width=(tLeft/90*100)+'%';if(tLeft<=0){stopTimer();autoAct()}else renderHint()},1000)}
+let tKey='';
+function stopTimer(){clearInterval(tmr);tmr=null;tKey='';$('tbar').style.display='none'}
+const turnKey=()=>G?[G.phase,actor(),Object.keys(G.walls).length,G.queue.length,G.used.join()].join(':'):'';
+function startTimer(){
+  if(!G||!SS||!SS.G||G.phase==='over'||!role){stopTimer();return}
+  const k=turnKey();if(tmr&&k===tKey)return;
+  clearInterval(tmr);tKey=k;tLeft=90;$('tbar').style.display='block';$('tfill').style.width='100%';
+  tmr=setInterval(()=>{tLeft=Math.max(0,tLeft-1);$('tfill').style.width=(tLeft/90*100)+'%';renderHint();
+    if(tLeft<=0){clearInterval(tmr);tmr=null;tKey='';if(canAct())autoAct();else{$('tbar').style.display='block'}}},1000)}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 function autoAct(){if(!canAct())return;toast('시간 초과! 무작위로 둡니다');
   if(G.phase==='place'){const e=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++)if(occ(r,c)<0)e.push([r,c]);const[r,c]=pick(e);tapCell(r,c);return}
@@ -277,7 +272,7 @@ function renderHint(){if(!G)G=makeG(0);let t='',hc=COL[G.turn];const nm=esc(name
   else if(ui.sel!==null)t=`${me||nm} — 이동할 칸을 누르세요`+(CF().stay?' · 같은 말을 다시 누르면 제자리':'')+(ui.armed?' · 점선 칸은 벽을 부수고 이동':'');
   else t=`${me||nm+' 차례'} — 움직일 말을 누르세요`;
   if(ON()&&role&&!linked())t+=' <span style="color:var(--mut);font-weight:400">· 상대 연결 끊김</span>';
-  if(tmr)t+=` · ${tLeft}초`;
+  if(tmr&&G.phase!=='over')t+=` · <span style="color:${tLeft<=10?'#ff5b4f':'inherit'}">${tLeft}초</span>`;
   $('hintT').innerHTML=t;$('hint').style.setProperty('--hc',hc)}
 
 function render(){
@@ -322,36 +317,27 @@ function render(){
 /* ---------- menu ---------- */
 const inviteUrl=()=>location.origin+location.pathname+'?room='+room;
 function paintMenu(){
-  $('mOn').classList.toggle('sel',ON());$('mLo').classList.toggle('sel',!ON());
-  $('pOn').hidden=!ON();$('pLo').hidden=ON();
-  if(ON()){$('netIdle').style.display=role?'none':'flex';$('netRoom').style.display=role?'flex':'none';
+  {$('netIdle').style.display=role?'none':'flex';$('netRoom').style.display=role?'flex':'none';
     $('roomCode').textContent=room||'';$('netStat').textContent=netStat;
     $('bShare').hidden=role!=='host';$('inviteUrl').textContent=role==='host'&&location.protocol.startsWith('http')?inviteUrl():'';
     $('bHost').disabled=$('bJoin').disabled=!HAS_PEER;
     if(!HAS_PEER)$('netIdle').querySelector('.note').textContent='연결 기능을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'}
-  const c=CF();$('first').value=c.first;$('oStay').checked=c.stay;$('oBrk').checked=c.brk;$('oTmr').checked=c.timer;
-  $('bStart').disabled=ON()&&!(role&&linked());
-  $('bResume').hidden=!(G&&G.phase!=='over'&&(ON()?SS&&SS.G:true));
+  const c=CF();$('first').value=c.first;$('oStay').checked=c.stay;$('oBrk').checked=c.brk;
+  $('bStart').disabled=!(role&&linked());
+  $('bResume').hidden=!(G&&G.phase!=='over'&&SS&&SS.G&&role);
 }
-function openMenu(){$('n0').value=cfg.names[0];$('n1').value=cfg.names[1];$('myName').value=myName;$('res').hidden=true;paintMenu();$('menu').hidden=false}
-function readOpts(){return{first:+$('first').value,stay:$('oStay').checked,brk:$('oBrk').checked,timer:$('oTmr').checked}}
-function setMode(m){if(mode===m)return;stopTimer();mode=m;ui={sel:null,armed:false};
-  if(ON()){G=SS&&SS.G?JSON.parse(JSON.stringify(SS.G)):null;hist=SS&&SS.hist?SS.hist.map(h=>({...h})):[]}
-  else{G=null;hist=[];loadLocal();mode='local'}
-  saveLocal();paintMenu();render()}
-$('mOn').onclick=()=>setMode('online');$('mLo').onclick=()=>setMode('local');
+function openMenu(){$('myName').value=myName;$('res').hidden=true;paintMenu();$('menu').hidden=false}
+function readOpts(){return{first:+$('first').value,stay:$('oStay').checked,brk:$('oBrk').checked,timer:true}}
 
 function startGame(first,opts){
-  if(ON()){if(!role){toast('먼저 방을 만들거나 참가하세요');return false}
+  {if(!role){toast('먼저 방을 만들거나 참가하세요');return false}
     if(!linked()){toast('상대와 아직 연결되지 않았어요');return false}
     SS={cfg:{...(SS&&SS.cfg||cfg),...(opts||{}),first},G:null,hist:[],rev:(SS&&SS.rev||0)};
     G=makeG(first);hist=[];ui={sel:null,armed:false};shownRes=-1;commit()}
-  else{cfg.first=first;G=makeG(first);hist=[];ui={sel:null,armed:false};saveLocal()}
   render();startTimer();keepAwake();return true}
-$('bStart').onclick=()=>{const o=readOpts();
-  if(!ON()){cfg.names=[$('n0').value.trim()||CN[0],$('n1').value.trim()||CN[1]];Object.assign(cfg,o)}
+$('bStart').onclick=()=>{const o=readOpts();Object.assign(cfg,o);
   if(startGame(o.first,o))$('menu').hidden=true};
-$('bResume').onclick=()=>{if(!ON()){cfg.names=[$('n0').value.trim()||CN[0],$('n1').value.trim()||CN[1]];saveLocal()}$('menu').hidden=true;render();startTimer();keepAwake()};
+$('bResume').onclick=()=>{$('menu').hidden=true;render();startTimer();keepAwake()};
 $('bAgain').onclick=()=>{const f=1-(G?G.first:0);if(startGame(f))$('res').hidden=true};
 $('bView').onclick=()=>{$('res').hidden=true};
 $('bMenu').onclick=openMenu;$('bRMenu').onclick=openMenu;
@@ -382,7 +368,7 @@ function adoptS(ns){
   render();
   const mine=canAct();
   if(mine&&!wasMine){toast('내 차례예요!');try{navigator.vibrate&&navigator.vibrate(120)}catch(e){}autoArm();render()}
-  if(mine!==wasMine||!mine)startTimer();
+  startTimer();
   if(G&&G.phase==='over'&&shownRes!==SS.rev)showResult();
   if(!$('menu').hidden)paintMenu();
 }
@@ -445,16 +431,14 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState!==
 let wl=null;async function keepAwake(){try{if('wakeLock' in navigator&&(!wl||wl.released))wl=await navigator.wakeLock.request('screen')}catch(e){}}
 
 /* ---------- boot ---------- */
-loadLocal();
-const net=ls('wallgo2net');if(net){myName=net.myName||'';if(validS(net.SS))SS=net.SS}
+const net=ls('wallgo2net');if(net){myName=net.myName||'';if(validS(net.SS))SS=net.SS;if(net.cfg)Object.assign(cfg,net.cfg)}
 const qRoom=(new URLSearchParams(location.search).get('room')||'').replace(/\D/g,'').slice(0,4);
 if(qRoom)try{history.replaceState(null,'',location.pathname)}catch(e){}
-if(ON()){G=SS&&SS.G&&net&&net.role?JSON.parse(JSON.stringify(SS.G)):null;hist=SS&&SS.hist&&net&&net.role?SS.hist.map(h=>({...h})):[]}
+if(SS&&SS.G&&net&&net.role){G=JSON.parse(JSON.stringify(SS.G));hist=Array.isArray(SS.hist)?SS.hist.map(h=>({...h})):[]}
 render();
-if(qRoom&&HAS_PEER){mode='online';saveLocal();if(net&&net.role==='guest'&&net.room===qRoom){room=qRoom;joinRoom(qRoom,true)}else{SS=null;G=null;joinRoom(qRoom)}openMenu();if(!myName)setTimeout(()=>$('myName').focus(),300)}
-else if(ON()){if(net&&net.role&&net.room&&HAS_PEER){room=net.room;if(net.role==='host')hostRoom(true);else joinRoom(net.room,true)}
-  if(!(SS&&SS.G&&role))openMenu();else{if(G.phase==='over')showResult();else startTimer()}}
-else{const had=!!ls('wallgo2')&&!!G;if(!had)openMenu();else if(G.phase==='over')showResult();else startTimer()}
+if(qRoom&&HAS_PEER){if(net&&net.role==='guest'&&net.room===qRoom){room=qRoom;joinRoom(qRoom,true)}else{SS=null;G=null;joinRoom(qRoom)}openMenu();if(!myName)setTimeout(()=>$('myName').focus(),300)}
+else{if(net&&net.role&&net.room&&HAS_PEER){room=net.room;if(net.role==='host')hostRoom(true);else joinRoom(net.room,true)}
+  if(!(SS&&SS.G&&role))openMenu();else if(G.phase==='over')showResult();else startTimer()}
 }
 </script>
 </body>
